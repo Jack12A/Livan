@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Livanannese Encrypter</title>
 
 <style>
@@ -15,71 +16,57 @@ body{
     align-items:center;
     height:100vh;
 }
-
 .card{
     width:920px;
     max-width:95%;
     background:#111827;
-    padding:30px;
-    border-radius:18px;
+    border-radius:20px;
+    padding:28px;
     box-shadow:0 20px 60px rgba(0,0,0,.6);
 }
-
-h1{text-align:center;margin-bottom:20px}
-
-.section{
-    margin-bottom:25px;
-    padding:15px;
-    background:#0f172a;
-    border-radius:14px;
-}
-
+h1{text-align:center;margin-bottom:15px;font-weight:600}
 textarea{
     width:100%;
-    height:110px;
-    background:#0b1220;
-    color:white;
+    height:120px;
+    background:#0f172a;
     border:1px solid #334155;
-    border-radius:10px;
-    padding:10px;
+    border-radius:12px;
+    color:white;
+    padding:12px;
 }
-
-input{
+input,.dropzone{
     width:100%;
-    margin-top:8px;
-    padding:8px;
-    border-radius:10px;
+    margin-top:10px;
+    padding:10px;
+    background:#0f172a;
     border:1px solid #334155;
-    background:#0b1220;
+    border-radius:12px;
     color:white;
 }
-
+.dropzone{
+    border:2px dashed #475569;
+    text-align:center;
+    cursor:pointer;
+}
 .buttons{
     display:flex;
     gap:10px;
-    margin-top:10px;
+    margin-top:12px;
 }
-
 button{
     flex:1;
-    padding:8px;
+    padding:10px;
     border:none;
-    border-radius:10px;
+    border-radius:12px;
     background:#3b82f6;
     color:white;
     cursor:pointer;
+    font-weight:600;
 }
-
 button:hover{background:#2563eb}
-
-.drop{
-    margin-top:10px;
-    padding:18px;
-    border:2px dashed #475569;
-    border-radius:12px;
-    text-align:center;
-}
-footer{text-align:center;opacity:.6;font-size:12px}
+.secondary{background:#475569}
+.secondary:hover{background:#334155}
+footer{text-align:center;font-size:12px;opacity:.6;margin-top:12px}
 </style>
 </head>
 
@@ -88,95 +75,96 @@ footer{text-align:center;opacity:.6;font-size:12px}
 
 <h1>🔐 Livanannese Encrypter</h1>
 
-<!-- TEXT -->
-<div class="section">
-<h3>Text Encryption</h3>
-<textarea id="textIn" placeholder="Enter text..."></textarea>
-<input type="password" id="textPass" placeholder="Text password">
+<textarea id="input" placeholder="Type or paste text here..."></textarea>
+<input type="password" id="textPassword" placeholder="Text password"/>
 
 <div class="buttons">
 <button onclick="encryptText()">Encrypt Text</button>
 <button onclick="decryptText()">Decrypt Text</button>
+<button class="secondary" onclick="copyOutput()">Copy</button>
 </div>
 
-<textarea id="textOut" placeholder="Output..." readonly></textarea>
+<textarea id="output" placeholder="Text output..." readonly></textarea>
+
+<br><br>
+
+<input type="password" id="filePassword" placeholder="File password"/>
+
+<div class="dropzone" id="dropzone">
+📁 Drag & Drop file here
 </div>
-
-<!-- FILE -->
-<div class="section">
-<h3>File Encryption</h3>
-<input type="password" id="filePass" placeholder="File password">
-
-<div class="drop" id="drop">Drag & Drop file here</div>
 <input type="file" id="fileInput" hidden>
 
 <div class="buttons">
 <button onclick="encryptFile()">Encrypt File</button>
 <button onclick="decryptFile()">Decrypt File</button>
 </div>
-</div>
 
-<footer>.Livan-encryption • AES-256-GCM</footer>
+<footer>
+.Livan-encryption • AES-256-GCM • PBKDF2
+</footer>
+
 </div>
 
 <script>
-const HEADER = new TextEncoder().encode("LIVANENC");
-const enc = new TextEncoder();
-const dec = new TextDecoder();
+const HEADER=new TextEncoder().encode("LIVANENC");
+const enc=new TextEncoder(), dec=new TextDecoder();
 let selectedFile=null;
 
-async function key(pass,salt){
-    const base = await crypto.subtle.importKey("raw",enc.encode(pass),"PBKDF2",false,["deriveKey"]);
-    return crypto.subtle.deriveKey({name:"PBKDF2",salt,iterations:100000,hash:"SHA-256"},base,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);
+/* KEY */
+async function getKey(password,salt){
+ const km=await crypto.subtle.importKey("raw",enc.encode(password),"PBKDF2",false,["deriveKey"]);
+ return crypto.subtle.deriveKey({name:"PBKDF2",salt,iterations:100000,hash:"SHA-256"},km,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);
 }
 
 /* TEXT */
 async function encryptText(){
-    const salt=crypto.getRandomValues(new Uint8Array(16));
-    const iv=crypto.getRandomValues(new Uint8Array(12));
-    const k=await key(textPass.value,salt);
-    const c=await crypto.subtle.encrypt({name:"AES-GCM",iv},k,enc.encode(textIn.value));
-    textOut.value=btoa(String.fromCharCode(...salt,...iv,...new Uint8Array(c)));
+ const salt=crypto.getRandomValues(new Uint8Array(16));
+ const iv=crypto.getRandomValues(new Uint8Array(12));
+ const key=await getKey(textPassword.value,salt);
+ const cipher=await crypto.subtle.encrypt({name:"AES-GCM",iv},key,enc.encode(input.value));
+ output.value=btoa(String.fromCharCode(...salt,...iv,...new Uint8Array(cipher)));
 }
 
 async function decryptText(){
-    const d=Uint8Array.from(atob(textIn.value),c=>c.charCodeAt(0));
-    const salt=d.slice(0,16),iv=d.slice(16,28),cipher=d.slice(28);
-    const k=await key(textPass.value,salt);
-    const p=await crypto.subtle.decrypt({name:"AES-GCM",iv},k,cipher);
-    textOut.value=dec.decode(p);
+ const d=Uint8Array.from(atob(input.value),c=>c.charCodeAt(0));
+ const salt=d.slice(0,16),iv=d.slice(16,28),cipher=d.slice(28);
+ const key=await getKey(textPassword.value,salt);
+ const plain=await crypto.subtle.decrypt({name:"AES-GCM",iv},key,cipher);
+ output.value=dec.decode(plain);
 }
 
+function copyOutput(){navigator.clipboard.writeText(output.value)}
+
 /* FILE */
-drop.onclick=()=>fileInput.click();
+const dropzone=document.getElementById("dropzone");
+dropzone.onclick=()=>fileInput.click();
 fileInput.onchange=e=>selectedFile=e.target.files[0];
-drop.ondrop=e=>{e.preventDefault();selectedFile=e.dataTransfer.files[0];};
-drop.ondragover=e=>e.preventDefault();
+dropzone.ondragover=e=>e.preventDefault();
+dropzone.ondrop=e=>{e.preventDefault();selectedFile=e.dataTransfer.files[0]};
 
 async function encryptFile(){
-    if(!selectedFile)return;
-    const data=new Uint8Array(await selectedFile.arrayBuffer());
-    const salt=crypto.getRandomValues(new Uint8Array(16));
-    const iv=crypto.getRandomValues(new Uint8Array(12));
-    const k=await key(filePass.value,salt);
-    const c=new Uint8Array(await crypto.subtle.encrypt({name:"AES-GCM",iv},k,data));
-    download(new Uint8Array([...HEADER,...salt,...iv,...c]),selectedFile.name+".Livan-encryption");
+ const data=new Uint8Array(await selectedFile.arrayBuffer());
+ const salt=crypto.getRandomValues(new Uint8Array(16));
+ const iv=crypto.getRandomValues(new Uint8Array(12));
+ const key=await getKey(filePassword.value,salt);
+ const cipher=new Uint8Array(await crypto.subtle.encrypt({name:"AES-GCM",iv},key,data));
+ download(new Uint8Array([...HEADER,...salt,...iv,...cipher]),selectedFile.name+".Livan-encryption");
 }
 
 async function decryptFile(){
-    if(!selectedFile)return;
-    const d=new Uint8Array(await selectedFile.arrayBuffer());
-    const salt=d.slice(8,24),iv=d.slice(24,36),cipher=d.slice(36);
-    const k=await key(filePass.value,salt);
-    const p=await crypto.subtle.decrypt({name:"AES-GCM",iv},k,cipher);
-    download(p,selectedFile.name.replace(".Livan-encryption",""));
+ const d=new Uint8Array(await selectedFile.arrayBuffer());
+ const salt=d.slice(8,24),iv=d.slice(24,36),cipher=d.slice(36);
+ const key=await getKey(filePassword.value,salt);
+ const plain=await crypto.subtle.decrypt({name:"AES-GCM",iv},key,cipher);
+ download(plain,selectedFile.name.replace(".Livan-encryption",""));
 }
 
 function download(data,name){
-    const a=document.createElement("a");
-    a.href=URL.createObjectURL(new Blob([data]));
-    a.download=name;
-    a.click();
+ const a=document.createElement("a");
+ a.href=URL.createObjectURL(new Blob([data]));
+ a.download=name;
+ a.click();
 }
 </script>
 </body>
