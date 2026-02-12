@@ -9,7 +9,7 @@
 body{
     margin:0;
     font-family:"Segoe UI",system-ui,sans-serif;
-    background:linear-gradient(135deg,#0b1220,#1b2436);
+    background:linear-gradient(135deg,#0b1220,#1f2937);
     color:white;
     display:flex;
     justify-content:center;
@@ -18,11 +18,11 @@ body{
 }
 
 .card{
-    width:900px;
+    width:920px;
     max-width:95%;
     background:#111827;
-    padding:30px;
-    border-radius:18px;
+    border-radius:20px;
+    padding:28px;
     box-shadow:0 20px 60px rgba(0,0,0,.6);
 }
 
@@ -33,16 +33,16 @@ h1{
 
 textarea{
     width:100%;
-    height:130px;
+    height:120px;
     background:#0f172a;
-    color:white;
     border:1px solid #334155;
     border-radius:12px;
-    padding:10px;
-    resize:none;
+    color:white;
+    padding:12px;
+    resize:vertical;
 }
 
-input{
+input,.dropzone{
     width:100%;
     margin-top:10px;
     padding:10px;
@@ -52,13 +52,14 @@ input{
     color:white;
 }
 
-.drop{
-    margin-top:12px;
+.dropzone{
     border:2px dashed #475569;
-    padding:18px;
     text-align:center;
-    border-radius:12px;
     cursor:pointer;
+    transition:.2s;
+}
+.dropzone:hover{
+    border-color:#3b82f6;
 }
 
 .buttons{
@@ -72,21 +73,25 @@ button{
     padding:10px;
     border:none;
     border-radius:12px;
-    background:#3b82f6;
+    background:#6366f1;
     color:white;
     cursor:pointer;
     font-weight:600;
 }
 
 button:hover{
-    background:#2563eb;
+    background:#4f46e5;
+}
+
+.secondary{
+    background:#475569;
 }
 
 footer{
-    margin-top:12px;
     text-align:center;
     font-size:12px;
     opacity:.6;
+    margin-top:14px;
 }
 </style>
 </head>
@@ -96,183 +101,173 @@ footer{
 
 <h1>🔐 Nick Encrypter</h1>
 
-<textarea id="text" placeholder="Type or paste text here..."></textarea>
-
-<input type="password" id="pass" placeholder="Password / Key">
+<!-- TEXT -->
+<textarea id="input" placeholder="Type or paste text here..."></textarea>
+<input type="password" id="textPass" placeholder="Text password">
 
 <div class="buttons">
-    <button onclick="encryptText()">Encrypt Text</button>
-    <button onclick="decryptText()">Decrypt Text</button>
-    <button onclick="copyOut()">Copy</button>
+<button onclick="encryptText()">Encrypt Text</button>
+<button onclick="decryptText()">Decrypt Text</button>
+<button class="secondary" onclick="copyOutput()">Copy</button>
 </div>
 
-<textarea id="output" placeholder="Output..." readonly></textarea>
+<textarea id="output" placeholder="Text output..." readonly></textarea>
 
-<div class="drop" id="drop">
-📁 Click or Drag & Drop files (.Nick-encryption)
+<br><br>
+
+<!-- FILE -->
+<input type="password" id="filePass" placeholder="File password">
+
+<div id="dropzone" class="dropzone">
+📁 Click or Drag & Drop file here
 </div>
-<input type="file" id="file" hidden>
 
-<footer>
-AES-256-GCM • PBKDF2 • Custom Nick Encryption Format
-</footer>
+<input type="file" id="fileInput" hidden>
+
+<div class="buttons">
+<button onclick="encryptFile()">Encrypt File</button>
+<button onclick="decryptFile()">Decrypt File</button>
+</div>
+
+<footer>.Nick-encryption • AES-256-GCM • PBKDF2 • Made by Jack Meersman</footer>
 
 </div>
 
 <script>
-/* ===============================
-   CONFIG
-================================ */
-const HEADER = new TextEncoder().encode("NICKENC"); // magic signature
+/* ================= CONFIG ================= */
+const HEADER = new TextEncoder().encode("NICKENC");
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
-const textBox = document.getElementById("text");
+/* ================= ELEMENTS ================= */
+const input = document.getElementById("input");
 const output = document.getElementById("output");
-const pass = document.getElementById("pass");
+const textPass = document.getElementById("textPass");
+const filePass = document.getElementById("filePass");
 
-/* ===============================
-   KEY DERIVATION
-================================ */
+const dropzone = document.getElementById("dropzone");
+const fileInput = document.getElementById("fileInput");
+
+let selectedFile = null;
+
+/* ================= FILE PICKER ================= */
+dropzone.onclick = () => fileInput.click();
+
+fileInput.addEventListener("change", e => {
+    selectedFile = e.target.files[0];
+    if(selectedFile)
+        dropzone.innerText = "Selected: " + selectedFile.name;
+});
+
+dropzone.ondragover = e => e.preventDefault();
+
+dropzone.ondrop = e => {
+    e.preventDefault();
+    selectedFile = e.dataTransfer.files[0];
+    dropzone.innerText = "Selected: " + selectedFile.name;
+};
+
+/* ================= CRYPTO ================= */
 async function getKey(password, salt){
-    const baseKey = await crypto.subtle.importKey(
+    const base = await crypto.subtle.importKey(
         "raw", enc.encode(password), "PBKDF2", false, ["deriveKey"]
     );
 
-    return crypto.subtle.deriveKey({
-        name:"PBKDF2",
-        salt,
-        iterations:100000,
-        hash:"SHA-256"
-    }, baseKey, {
-        name:"AES-GCM",
-        length:256
-    }, false, ["encrypt","decrypt"]);
+    return crypto.subtle.deriveKey(
+        {name:"PBKDF2", salt, iterations:100000, hash:"SHA-256"},
+        base,
+        {name:"AES-GCM", length:256},
+        false,
+        ["encrypt","decrypt"]
+    );
 }
 
-/* ===============================
-   TEXT MODE
-================================ */
+/* ================= TEXT ================= */
 async function encryptText(){
-    if(!textBox.value || !pass.value) return alert("Enter text and password");
-
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const iv   = crypto.getRandomValues(new Uint8Array(12));
-    const key  = await getKey(pass.value, salt);
+
+    const key = await getKey(textPass.value, salt);
 
     const cipher = await crypto.subtle.encrypt(
         {name:"AES-GCM", iv},
         key,
-        enc.encode(textBox.value)
+        enc.encode(input.value)
     );
 
-    const merged = new Uint8Array([...salt,...iv,...new Uint8Array(cipher)]);
-    output.value = btoa(String.fromCharCode(...merged));
+    output.value = btoa(
+        String.fromCharCode(...salt, ...iv, ...new Uint8Array(cipher))
+    );
 }
 
 async function decryptText(){
-    try{
-        const data = Uint8Array.from(atob(textBox.value), c=>c.charCodeAt(0));
+    const data = Uint8Array.from(atob(input.value), c=>c.charCodeAt(0));
 
-        const salt = data.slice(0,16);
-        const iv   = data.slice(16,28);
-        const cipher = data.slice(28);
+    const salt = data.slice(0,16);
+    const iv   = data.slice(16,28);
+    const cipher = data.slice(28);
 
-        const key = await getKey(pass.value, salt);
+    const key = await getKey(textPass.value, salt);
 
-        const plain = await crypto.subtle.decrypt(
-            {name:"AES-GCM", iv},
-            key,
-            cipher
-        );
+    const plain = await crypto.subtle.decrypt(
+        {name:"AES-GCM", iv},
+        key,
+        cipher
+    );
 
-        output.value = dec.decode(plain);
-    }catch{
-        alert("Invalid password or data");
-    }
+    output.value = dec.decode(plain);
 }
 
-function copyOut(){
+function copyOutput(){
     navigator.clipboard.writeText(output.value);
 }
 
-/* ===============================
-   FILE MODE
-================================ */
-const drop = document.getElementById("drop");
-const fileInput = document.getElementById("file");
+/* ================= FILE ================= */
+async function encryptFile(){
+    if(!selectedFile) return alert("Choose a file first");
 
-drop.onclick = ()=> fileInput.click();
+    const data = new Uint8Array(await selectedFile.arrayBuffer());
 
-drop.ondragover = e => e.preventDefault();
-
-drop.ondrop = e=>{
-    e.preventDefault();
-    handleFile(e.dataTransfer.files[0]);
-};
-
-fileInput.onchange = e=>{
-    handleFile(e.target.files[0]);
-};
-
-async function handleFile(file){
-    if(!pass.value) return alert("Enter password first");
-
-    const data = new Uint8Array(await file.arrayBuffer());
-
-    const isNick =
-        data.length > 7 &&
-        HEADER.every((v,i)=>data[i]===v);
-
-    if(isNick) decryptFile(data,file.name);
-    else encryptFile(data,file.name);
-}
-
-async function encryptFile(data,name){
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const iv   = crypto.getRandomValues(new Uint8Array(12));
-    const key  = await getKey(pass.value, salt);
+    const key  = await getKey(filePass.value, salt);
 
-    const cipher = new Uint8Array(await crypto.subtle.encrypt(
-        {name:"AES-GCM", iv}, key, data
-    ));
+    const cipher = new Uint8Array(
+        await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, data)
+    );
 
-    const out = new Uint8Array([...HEADER,...salt,...iv,...cipher]);
-
-    download(out, name + ".Nick-encryption");
+    download(
+        new Uint8Array([...HEADER, ...salt, ...iv, ...cipher]),
+        selectedFile.name + ".Nick-encryption"
+    );
 }
 
-async function decryptFile(data,name){
-    try{
-        const salt = data.slice(7,23);
-        const iv   = data.slice(23,35);
-        const cipher = data.slice(35);
+async function decryptFile(){
+    if(!selectedFile) return alert("Choose a file first");
 
-        const key = await getKey(pass.value, salt);
+    const data = new Uint8Array(await selectedFile.arrayBuffer());
 
-        const plain = await crypto.subtle.decrypt(
-            {name:"AES-GCM", iv},
-            key,
-            cipher
-        );
+    const salt = data.slice(7,23);  // HEADER length = 7
+    const iv   = data.slice(23,35);
+    const cipher = data.slice(35);
 
-        download(plain, name.replace(".Nick-encryption",""));
-    }catch{
-        alert("Wrong password or corrupted file");
-    }
+    const key = await getKey(filePass.value, salt);
+
+    const plain = await crypto.subtle.decrypt(
+        {name:"AES-GCM", iv},
+        key,
+        cipher
+    );
+
+    download(plain, selectedFile.name.replace(".Nick-encryption",""));
 }
 
 function download(data,name){
-    const blob = new Blob([data]);
-    const url = URL.createObjectURL(blob);
-
     const a = document.createElement("a");
-    a.href = url;
+    a.href = URL.createObjectURL(new Blob([data]));
     a.download = name;
     a.click();
-
-    URL.revokeObjectURL(url);
 }
 </script>
 </body>
